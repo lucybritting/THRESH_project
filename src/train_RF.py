@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from imblearn.ensemble import BalancedRandomForestClassifier
+from imblearn.over_sampling import SMOTE
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, matthews_corrcoef, balanced_accuracy_score
 from catboost import CatBoostClassifier
@@ -90,6 +91,12 @@ def train(args):
         # go over all models
         for name, model in models.items():
             # TODO: add discretised and binarised data
+            # handle class imbalance by oversampling the underrepresented class
+            # TODO: does not work due to missing values
+            #if name in ("rf", "catboost"):
+                #X_train_fit, y_train_fit = SMOTE(random_state=42).fit_resample(X_train_cont, y_train)
+            #else:
+                #X_train_fit, y_train_fit = X_train_cont, y_train
             model.fit(X_train_cont, y_train)
             y_prob = model.predict_proba(X_test_cont)[:, 1] # predict_proba outputs 2D array of probabilities for each class
             y_pred = model.predict(X_test_cont) # predict outputs 1D array of 0.5 threshold on majority vote
@@ -125,9 +132,14 @@ def train(args):
             print(f"  {col:<22} {mean[col]:.3f} ± {std[col]:.3f}")
 
         # save performance metric results
-        out_path = OUTPUT_DIR / f"{args.cohort}_{name}_cv_results.csv"
+        out_path = OUTPUT_DIR / f"{args.cohort}_{name}_cv_results_per_fold.csv"
         result_df.to_csv(out_path, index=False)
         print(f"Saved {out_path.name}")
+
+        # save summary (mean and std over folds)
+        summary_path = OUTPUT_DIR / f"{args.cohort}_{name}_cv_average.csv"
+        pd.DataFrame({"mean": mean, "std": std}).to_csv(summary_path)
+        print(f"Saved {summary_path.name}")
 
 
 if __name__ == "__main__":
