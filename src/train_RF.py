@@ -7,6 +7,7 @@ import pandas as pd
 from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, matthews_corrcoef, balanced_accuracy_score
+from catboost import CatBoostClassifier
 
 DATA_DIR   = Path(__file__).parent.parent / "data"
 OUTPUT_DIR = Path(__file__).parent.parent / "output" / "models"
@@ -65,10 +66,14 @@ def train(args):
 
     # TODO: add the other models here
     # models:
-    rf = RandomForestClassifier(n_estimators=100, max_depth=100, random_state=42, n_jobs=-1, class_weight="balanced_subsample")
+    models = {
+        "rf": RandomForestClassifier(n_estimators=100, max_depth=100, random_state=42, n_jobs=-1, class_weight="balanced_subsample"),
+        "balanced_rf": BalancedRandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1),
+        "catboost": CatBoostClassifier(n_estimators=100, random_seed=42, verbose=False),
+    }
 
-    # results:
-    results_rf = [] # this is going to be a list of dicts
+    # results: dict, keys are names of the models, values are dicts, one dict per fold, each containing the metric scores for this fold
+    results = {name: [] for name in models}
 
     # iterate over all folders
     for fold_idx in range(N_FOLDS):
@@ -82,47 +87,47 @@ def train(args):
 
         print(f"--- Fold {fold_idx} ---")
 
-        # Train all models on all data (continuous, discretised, binarised)
-        # TODO: add all the other models and data
-        # standard RF
-        rf.fit(X_train_cont, y_train)
-        y_prob = rf.predict_proba(X_test_cont)[:, 1] # predict_proba outputs 2D array of probabilities for each class
-        y_pred = rf.predict(X_test_cont) # predict outputs 1D array of 0.5 threshold on majority vote
+        # go over all models
+        for name, model in models.items():
+            # TODO: add discretised and binarised data
+            model.fit(X_train_cont, y_train)
+            y_prob = model.predict_proba(X_test_cont)[:, 1] # predict_proba outputs 2D array of probabilities for each class
+            y_pred = model.predict(X_test_cont) # predict outputs 1D array of 0.5 threshold on majority vote
 
-        rf_fold_results = {
-            "fold_idx": fold_idx,
-            "auc_roc": roc_auc_score(y_test, y_prob),
-            "avg_prec": average_precision_score(y_test, y_prob),
-            "f1": f1_score(y_test, y_pred),
-            "mcc": matthews_corrcoef(y_test, y_pred),
-            "balanced_acc": balanced_accuracy_score(y_test, y_pred),
-        }
+            fold_results = {
+                "fold_idx": fold_idx,
+                "auc_roc": roc_auc_score(y_test, y_prob),
+                "avg_prec": average_precision_score(y_test, y_prob),
+                "f1": f1_score(y_test, y_pred),
+                "mcc": matthews_corrcoef(y_test, y_pred),
+                "balanced_acc": balanced_accuracy_score(y_test, y_pred),
+            }
 
-        results_rf.append(rf_fold_results)
+            results[name].append(fold_results)
+            print(f"[{name}]"
+                  f"AUC-ROC={fold_results['auc_roc']:.3f}  "
+                  f"AP={fold_results['avg_prec']:.3f}  "
+                  f"F1={fold_results['f1']:.3f}  "
+                  f"MCC={fold_results['mcc']:.3f}  "
+                  f"BalAcc={fold_results['balanced_acc']:.3f}")
 
-        print("[RF]"
-              f"AUC-ROC={rf_fold_results['auc_roc']:.3f}  "
-              f"AP={rf_fold_results['avg_prec']:.3f}  "
-              f"F1={rf_fold_results['f1']:.3f}  "
-              f"MCC={rf_fold_results['mcc']:.3f}  "
-              f"BalAcc={rf_fold_results['balanced_acc']:.3f}")
-
-        # TODO: should model be stored?
+            # TODO: should model be stored?
 
     # get average scores and std
-    # iterate over rf results
-    results_df = pd.DataFrame(results_rf)
-    mean = results_df.drop(columns="fold_idx").mean() # pd series where idx is metric names (auc, avg_prec etc) and the values are the means
-    std = results_df.drop(columns="fold_idx").std() # same here
-    print(f"\n[RF] Mean ± std across {N_FOLDS} folds:")
-    # print the values for the different metrics
-    for col in mean.index:
-        print(f"  {col:<22} {mean[col]:.3f} ± {std[col]:.3f}")
+    # iterate over results
+    for name, result in results.items():
+        result_df = pd.DataFrame(result)
+        mean = result_df.drop(columns="fold_idx").mean() # pd series where idx is metric names (auc, avg_prec etc) and the values are the means
+        std = result_df.drop(columns="fold_idx").std() # same here
+        print(f"\n[{name}] Mean ± std across {N_FOLDS} folds:")
+        # print the values for the different metrics
+        for col in mean.index:
+            print(f"  {col:<22} {mean[col]:.3f} ± {std[col]:.3f}")
 
-    # save performance metric results
-    out_path = OUTPUT_DIR / f"{args.cohort}_RF_cv_results.csv"
-    results_df.to_csv(out_path, index=False)
-    print(f"Saved {out_path.name}")
+        # save performance metric results
+        out_path = OUTPUT_DIR / f"{args.cohort}_{name}_cv_results.csv"
+        result_df.to_csv(out_path, index=False)
+        print(f"Saved {out_path.name}")
 
 
 if __name__ == "__main__":
