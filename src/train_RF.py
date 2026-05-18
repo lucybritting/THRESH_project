@@ -11,19 +11,20 @@ from sklearn.metrics import roc_auc_score, average_precision_score, f1_score, ma
 from catboost import CatBoostClassifier
 
 DATA_DIR   = Path(__file__).parent.parent / "data"
-OUTPUT_DIR = Path(__file__).parent.parent / "output" / "models"
+OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
-# TODO: implement balancing for normal RF
-
-# TODO: cohort file not necessary? Add discretised and binarised file paths
 COHORTS = {
     "aplasia": {
-        "agg":    DATA_DIR / "preprocessed_files/aggregated/mimic_cohort_aplasia_45_days_agg.csv",
+        "cont":    DATA_DIR / "preprocessed_files/aggregated/mimic_cohort_aplasia_45_days_agg.csv",
+        "disc_merged": OUTPUT_DIR / "range_mapping/aplasia_discretised_merged.csv",
+        "disc_unmerged": OUTPUT_DIR / "range_mapping/aplasia_discretised_unmerged.csv",
         "cohort": DATA_DIR / "cohorts/mimic_cohort_aplasia_45_days.csv.gz",
         "folds":  DATA_DIR / "folds/mimic_cohort_aplasia_45_days",
     },
     "NF": {
-        "agg":    DATA_DIR / "preprocessed_files/aggregated/mimic_cohort_NF_30_days_agg.csv",
+        "cont":    DATA_DIR / "preprocessed_files/aggregated/mimic_cohort_NF_30_days_agg.csv",
+        "disc_merged": OUTPUT_DIR / "range_mapping/NF_discretised_merged.csv",
+        "disc_unmerged": OUTPUT_DIR / "range_mapping/NF_discretised_unmerged.csv",
         "cohort": DATA_DIR / "cohorts/mimic_cohort_NF_30_days.csv.gz",
         "folds":  DATA_DIR / "folds/mimic_cohort_NF_30_days",
     },
@@ -31,14 +32,18 @@ COHORTS = {
 
 N_FOLDS = 5
 
-def load_data(cohort):
-    # TODO: directly handle missing values here? --> set to np.nan?
+def load_data(cohort, discr):
     # aggregated file for continuous values
-    agg = pd.read_csv(COHORTS[cohort]["agg"]).set_index("hadm_id")
-    # TODO: load discretised and binarised files
+    cont = pd.read_csv(COHORTS[cohort]["cont"]).set_index("hadm_id")
+    # load discretised data
+    disc = pd.read_csv(COHORTS[cohort][f"disc_{discr}"]).set_index("hadm_id")
+    feature_sets = {
+        "cont": cont,
+        "disc": disc,
+    }
     # labels per hadm_id
     labels = (pd.read_csv(COHORTS[cohort]["cohort"], usecols=["hadm_id", "label"]).set_index("hadm_id"))
-    return agg, labels
+    return feature_sets, labels
 
 # returns arrays of hadm_ids belonging to train, val, test part
 def load_fold(cohort, fold_idx):
@@ -48,24 +53,20 @@ def load_fold(cohort, fold_idx):
     return train[:, 1], val[:, 1], test[:, 1]
 
 # takes set of hadm_ids and returns the corresponding features and labels as np arrays
-def get_features_labels(agg, labels, hadm_ids):
-    # TODO: also extract features from discretised and binarised files
+def get_features_labels(feat, labels, hadm_ids):
     # should not be the case.
     # drop any ids not present in the aggregated file
-    # TODO: Why can this happen??
-    hadm_ids = [h for h in hadm_ids if h in agg.index]
-    # continuous value from aggregated
-    X_cont = agg.loc[hadm_ids].values # selects rows from agg in order of the hadm_ids provided --> 2D np array of shape (n_admissions, n_features)
+    hadm_ids = [h for h in hadm_ids if h in feat.index]
+    # feature values
+    X = feat.loc[hadm_ids].values # selects rows from file in order of the hadm_ids provided --> 2D np array of shape (n_admissions, n_features)
     y = labels.loc[hadm_ids]["label"].values # selects the labels of the provided hadm_ids in their order --> 1D np array of labels
-    return X_cont, y
+    return X, y
 
 def train(args):
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    agg, labels = load_data(args.cohort)
-    print(f"Loaded {len(agg)} admissions, {agg.shape[1]} features  "
-          f"(label distribution: {labels['label'].value_counts().to_dict()})\n")
+    (OUTPUT_DIR / "metrics").mkdir(parents=True, exist_ok=True)
+    feature_sets, labels = load_data(args.cohort, args.discretised)
+    print(f"(label distribution: {labels['label'].value_counts().to_dict()})\n")
 
-    # TODO: add the other models here
     # models:
     models = {
         "rf": RandomForestClassifier(n_estimators=100, max_depth=100, random_state=42, n_jobs=-1, class_weight="balanced_subsample"),
@@ -73,78 +74,66 @@ def train(args):
         "catboost": CatBoostClassifier(n_estimators=100, random_seed=42, verbose=False),
     }
 
-    # results: dict, keys are names of the models, values are dicts, one dict per fold, each containing the metric scores for this fold
-    results = {name: [] for name in models}
 
-    # iterate over all folders
-    for fold_idx in range(N_FOLDS):
-        # get the hadm_ids
-        train_ids, val_ids, test_ids = load_fold(args.cohort, fold_idx)
 
-        # concatenate train and val and get features and labels
-        # TODO: add the discretised and binarised features
-        X_train_cont, y_train = get_features_labels(agg, labels, np.concatenate([train_ids, val_ids]))
-        X_test_cont, y_test = get_features_labels(agg, labels, test_ids)
+    # dict: {feature set --> dict {model --> list [dict per fold {measure --> value}, ...]}}
+    all_results = {feat_name: {name: [] for name in models} for feat_name in feature_sets}
 
-        print(f"--- Fold {fold_idx} ---")
+    # iterate over all feature sets
+    for feat_name, feat in feature_sets.items():
+        print(f"\n=== Feature: {feat_name} ===")
 
-        # go over all models
-        for name, model in models.items():
-            # TODO: add discretised and binarised data
-            # handle class imbalance by oversampling the underrepresented class
-            # TODO: does not work due to missing values
-            #if name in ("rf", "catboost"):
-                #X_train_fit, y_train_fit = SMOTE(random_state=42).fit_resample(X_train_cont, y_train)
-            #else:
-                #X_train_fit, y_train_fit = X_train_cont, y_train
-            model.fit(X_train_cont, y_train)
-            y_prob = model.predict_proba(X_test_cont)[:, 1] # predict_proba outputs 2D array of probabilities for each class
-            y_pred = model.predict(X_test_cont) # predict outputs 1D array of 0.5 threshold on majority vote
+        for fold_idx in range(N_FOLDS):
+            train_ids, val_ids, test_ids = load_fold(args.cohort, fold_idx)
+            X_train, y_train = get_features_labels(feat, labels, np.concatenate([train_ids, val_ids]))
+            X_test, y_test = get_features_labels(feat, labels, test_ids)
 
-            fold_results = {
-                "fold_idx": fold_idx,
-                "auc_roc": roc_auc_score(y_test, y_prob),
-                "avg_prec": average_precision_score(y_test, y_prob),
-                "f1": f1_score(y_test, y_pred),
-                "mcc": matthews_corrcoef(y_test, y_pred),
-                "balanced_acc": balanced_accuracy_score(y_test, y_pred),
-            }
+            print(f"--- Fold {fold_idx} ---")
 
-            results[name].append(fold_results)
-            print(f"[{name}]"
-                  f"AUC-ROC={fold_results['auc_roc']:.3f}  "
-                  f"AP={fold_results['avg_prec']:.3f}  "
-                  f"F1={fold_results['f1']:.3f}  "
-                  f"MCC={fold_results['mcc']:.3f}  "
-                  f"BalAcc={fold_results['balanced_acc']:.3f}")
+            for model_name, model in models.items():
+                model.fit(X_train, y_train)
+                y_prob = model.predict_proba(X_test)[:, 1]
+                y_pred = model.predict(X_test)
 
-            # TODO: should model be stored?
+                fold_results = {
+                    "auc_roc":      roc_auc_score(y_test, y_prob),
+                    "avg_prec":     average_precision_score(y_test, y_prob),
+                    "f1":           f1_score(y_test, y_pred),
+                    "mcc":          matthews_corrcoef(y_test, y_pred),
+                    "balanced_acc": balanced_accuracy_score(y_test, y_pred),
+                }
+                all_results[feat_name][model_name].append(fold_results)
+                print(f"  [{model_name}]  "
+                      f"AUC-ROC={fold_results['auc_roc']:.3f}  "
+                      f"AP={fold_results['avg_prec']:.3f}  "
+                      f"F1={fold_results['f1']:.3f}  "
+                      f"MCC={fold_results['mcc']:.3f}  "
+                      f"BalAcc={fold_results['balanced_acc']:.3f}")
 
-    # get average scores and std
-    # iterate over results
-    for name, result in results.items():
-        result_df = pd.DataFrame(result)
-        mean = result_df.drop(columns="fold_idx").mean() # pd series where idx is metric names (auc, avg_prec etc) and the values are the means
-        std = result_df.drop(columns="fold_idx").std() # same here
-        print(f"\n[{name}] Mean ± std across {N_FOLDS} folds:")
-        # print the values for the different metrics
-        for col in mean.index:
-            print(f"  {col:<22} {mean[col]:.3f} ± {std[col]:.3f}")
+    # build combined summary table
+    rows = []
+    metrics = ["auc_roc", "avg_prec", "f1", "mcc", "balanced_acc"]
+    for model_name in models:
+        for measure in metrics:
+            row = {"model": model_name, "measure": measure}
+            for feat_name in feature_sets:
+                fold_vals = [f[measure] for f in all_results[feat_name][model_name]]
+                row[f"mean_{feat_name}"] = np.mean(fold_vals)
+                row[f"std_{feat_name}"]  = np.std(fold_vals)
+            rows.append(row)
 
-        # save performance metric results
-        out_path = OUTPUT_DIR / f"{args.cohort}_{name}_cv_results_per_fold.csv"
-        result_df.to_csv(out_path, index=False)
-        print(f"Saved {out_path.name}")
+    summary_df = pd.DataFrame(rows)
+    print(f"\n{summary_df.to_string(index=False)}")
 
-        # save summary (mean and std over folds)
-        summary_path = OUTPUT_DIR / f"{args.cohort}_{name}_cv_average.csv"
-        pd.DataFrame({"mean": mean, "std": std}).to_csv(summary_path)
-        print(f"Saved {summary_path.name}")
+    out_path = OUTPUT_DIR / "metrics" / f"{args.cohort}_{args.discretised}_performance_summary.csv"
+    summary_df.to_csv(out_path, index=False)
+    print(f"\nSaved {out_path.name}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--cohort", choices=list(COHORTS), required=True)
+    parser.add_argument("--discretised", choices=["merged", "unmerged"], required=True)
     args = parser.parse_args()
 
     train(args)
