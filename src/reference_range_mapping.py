@@ -21,6 +21,7 @@ COHORTS = {
 }
 
 # ---- Runtime Params -----------------------
+# TODO: Adjust window size according to the cohort!!
 WINDOW_DAYS = 14
 CHUNK_SIZE  = 100000000
 
