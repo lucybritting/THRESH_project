@@ -69,7 +69,7 @@ class NarrowestRange(RangeMergeStrategy):
         if lower is not None and upper is not None and upper <= lower:
             if self.warning_log is not None:
                 self.warning_log.add(hadm_id, itemid, lower, upper)
-                return None, None
+            return None, None
         return lower, upper
 
 class AverageRange(RangeMergeStrategy):
@@ -87,5 +87,5 @@ class AverageRange(RangeMergeStrategy):
         if lower is not None and upper is not None and upper <= lower:
             if self.warning_log is not None:
                 self.warning_log.add(hadm_id, itemid, lower, upper)
-                return None, None
+            return None, None
         return lower, upper

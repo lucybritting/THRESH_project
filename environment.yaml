@@ -11,3 +11,4 @@ dependencies:
   - matplotlib
   - imbalanced-learn
   - catboost
+  - pytest
