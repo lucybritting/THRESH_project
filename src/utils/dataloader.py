@@ -1,0 +1,255 @@
+import pickle
+from pathlib import Path
+from typing import Tuple
+
+import pandas as pd
+
+# ---- Directories and file paths
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
+OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
+
+LABEVENTS_PATH = DATA_DIR / "raw_files/labevents.csv.gz"
+D_LABITEMS_PATH = DATA_DIR / "raw_files/d_labitems.csv.gz"
+ADMISSIONS_PATH = DATA_DIR / "raw_files/admissions.csv.gz"
+PATIENTS_PATH = DATA_DIR / "raw_files/patients.csv.gz"
+
+CHUNK_SIZE = 1000000000
+
+
+# ---------- PATHS --------------------------------------
+def analysis_path() -> Path:
+    return OUTPUT_DIR / "mimic_analysis"
+
+
+def blacklist_path() -> Path:
+    return analysis_path() / "itemid_blacklist.txt"
+
+
+def top100itemids_path() -> Path:
+    return DATA_DIR / "top_features" / "all_mimctop100_features_hadm.pkl"
+
+
+def binary_mapping_path(cohort: str) -> Path:
+    return OUTPUT_DIR / cohort / "mapping" / f"{cohort}_binary.csv"
+
+
+def discrete_mapping_path(cohort: str, strategy_name: str) -> Path:
+    return OUTPUT_DIR / cohort / "mapping" / f"{cohort}_discrete_{strategy_name}.csv"
+
+
+def continuous_mapping_path(cohort: str) -> Path:
+    return OUTPUT_DIR / cohort / "mapping" / f"{cohort}_continuous.csv"
+
+
+def ranges_path(cohort: str) -> Path:
+    return OUTPUT_DIR / cohort / "ranges" / f"{cohort}_ranges.csv"
+
+
+def merged_ranges_path(cohort: str, strategy_name: str) -> Path:
+    return OUTPUT_DIR / cohort / "ranges" / f"{cohort}_ranges_{strategy_name}.csv"
+
+
+def merge_warnings_path(cohort: str, strategy_name: str) -> Path:
+    return OUTPUT_DIR / cohort / "ranges" / f"{cohort}_warnings_{strategy_name}.csv"
+
+
+# ---------- CREATE DIRECTORIES -------------------------
+def create_analysis_dir() -> Path:
+    analysis_dir = analysis_path()
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    return analysis_dir
+
+
+def create_output_directories(cohorts: list[str]) -> Tuple[list, list]:
+    """
+    Creates the output directories for the cohorts and separates the cohorts depending on whether range file already exists.
+    :param cohorts: list of strings
+    :return: tuple of lists of strings
+    """
+    have_ranges = []
+    need_ranges = []
+    for cohort in cohorts:
+        base = OUTPUT_DIR / cohort
+        for subdir in ["ranges", "mapping", "folds", "models", "metrics"]:
+            (base / subdir).mkdir(parents=True, exist_ok=True)
+        # check if range_file exists
+        range_path = ranges_path(cohort)
+        if range_path.exists():
+            have_ranges.append(cohort)
+        else:
+            need_ranges.append(cohort)
+    print(f"Output directories created for {len(cohorts)} cohorts.")
+    return have_ranges, need_ranges
+
+
+# ---------- LOAD FUNCTIONS -----------------------------
+def load_top100_itemids() -> set[int]:
+    with open(top100itemids_path(), "rb") as f:
+        itemids = set(pickle.load(f))
+    return itemids - load_blacklist()  # excludes itemids with only non-numeric values
+
+
+def load_all_itemids() -> set[int]:
+    itemids = set(pd.read_csv(D_LABITEMS_PATH, usecols=["itemid"])["itemid"])
+    return itemids - load_blacklist()  # excludes itemids with only non-numeric values
+
+
+def load_continuous_values(cohort: str) -> pd.DataFrame:
+    return pd.read_csv(continuous_mapping_path(cohort))
+
+
+def load_blacklist() -> set[int]:
+    with open(blacklist_path()) as f:
+        return {int(line) for line in f if line.strip()}
+
+
+def load_ranges(cohort: str) -> dict[tuple, set]:
+    """
+    Reads the ranges file for provided cohort. Reconstructs dict: (hadm_id, itemid) -> set of tuples {(lower, upper), ...}
+    :param cohort: string. Name of cohort to load
+    :return: dict: tuple (hadm_id, itemid) -> set of tuples {(lower, upper), ...}
+    """
+    df = pd.read_csv(ranges_path(cohort))
+    ranges = {}
+    for row in df.itertuples(index=False):  # itertuples iterates over the rows of the df. Each row is a named tuple.
+        hadm_id = int(row.hadm_id)
+        itemid = int(row.itemid)
+        lower = None if pd.isna(row.ref_range_lower) else float(row.ref_range_lower)
+        upper = None if pd.isna(row.ref_range_upper) else float(row.ref_range_upper)
+        ranges.setdefault((hadm_id, itemid), set()).add((lower, upper))
+    return ranges
+
+
+def load_merged_ranges(cohort: str, strategy_name: str) -> dict[tuple, tuple]:
+    df = pd.read_csv(merged_ranges_path(cohort, strategy_name))
+    merged = {}
+    for _, row in df.iterrows():
+        hadm_id = int(row["hadm_id"])
+        itemid = int(row["itemid"])
+        lower = None if pd.isna(row["ref_range_lower"]) else float(row["ref_range_lower"])
+        upper = None if pd.isna(row["ref_range_upper"]) else float(row["ref_range_upper"])
+        merged[(hadm_id, itemid)] = (lower, upper)
+    return merged
+
+
+def load_cohort(cohort: str) -> pd.DataFrame:  # hadm_id, label, demographics
+    """
+    Reads in the cohort file. Only the columns hadm_id, gender, age, label
+    :param cohort: string. Name of the cohort.
+    :return: pd.DataFrame
+    """
+    path = DATA_DIR / "cohorts" / f"{cohort}.csv.gz"
+    return pd.read_csv(path, usecols=["hadm_id", "gender", "age", "label"])
+
+
+# ---------- SAVE FUNCTIONS -----------------------------
+def save_continuous_value(cohort: str,
+                          cohort_avg: dict[tuple[int, int], float],
+                          hadm_ids: list[int],
+                          itemids: list[int]) -> None:
+    # convert dict to Series with MultiIndex, then unstack to wide
+    s = pd.Series(cohort_avg)
+    s.index = pd.MultiIndex.from_tuples(s.index, names=["hadm_id", "itemid"])
+    df = s.unstack("itemid")  # pivots the itemid level from rows into columns --> gives DataFrame
+    # fill in any missing hadm_ids or itemids with None
+    df = df.reindex(index=sorted(hadm_ids), columns=sorted(
+        itemids))  # ensures that all hadm_ids and itemids are present (if no measurement they get row or column of NaNs)
+    df.reset_index().to_csv(continuous_mapping_path(cohort),
+                            index=False)  # reset index to make hadm_id a column again
+
+
+def save_binary_values(cohort: str, binary_df: pd.DataFrame) -> None:
+    binary_df.to_csv(binary_mapping_path(cohort), index=False)
+    print(f"Saved binary mapping for cohort {cohort}.")
+
+
+def save_discrete_values(cohort: str, discrete_df: pd.DataFrame, strategy_name: str) -> None:
+    discrete_df.to_csv(discrete_mapping_path(cohort, strategy_name), index=False)
+    print(f"Saved discrete mapping ({strategy_name}) for cohort {cohort}.")
+
+
+def save_ranges(cohort: str, cohort_ranges: dict) -> None:
+    rows = []
+    for (hadm_id, itemid), range_set in cohort_ranges.items():
+        for (lower, upper) in range_set:
+            rows.append({
+                "hadm_id": hadm_id,
+                "itemid": itemid,
+                "ref_range_lower": lower,
+                "ref_range_upper": upper,
+            })
+    df = pd.DataFrame(rows)
+    df.to_csv(ranges_path(cohort))
+
+
+def save_merged_ranges(cohort: str, merged: dict,
+                       strategy_name: str) -> None:  # merged is dict: (hadm_id, itemid) -> (lower, upper)
+    rows = [{"hadm_id": k[0], "itemid": k[1], "ref_range_lower": v[0], "ref_range_upper": v[1]}
+            for k, v in
+            merged.items()]  # list of dicts. Each dict gives a row in the output csv. k, v are key, values from the merged dict
+    pd.DataFrame(rows).to_csv(merged_ranges_path(cohort, strategy_name), index=False)
+    print(f"Saved merged ranges ({strategy_name}) for cohort {cohort}.")
+
+
+# --------------- SCAN LABEVENTS -------------------------
+def scan_labevents(hadm_id_set: set[int], top100labs: bool) -> tuple[dict, dict, set]:
+    # load either top 100 itemids or all itemids
+    itemid_set = load_top100_itemids() if top100labs else load_all_itemids()
+
+    # collect different ranges for pairs (hadm_id, itemid): {(hadm_id, itemid) -> set of (ref_range_lower, ref_range_upper) tuples}
+    per_hadm_item_ranges: dict[tuple, set] = {}
+    # collect values for (hadm_id, itemid) pair: (hadm_id, itemid) -> list of float values
+    per_hadm_item_values: dict[tuple, list] = {}
+
+    chunk_counter = 0
+    print("Scanning labevents (this may take a moment, because file is large)...")
+
+    # chunk reading the labevents file
+    for chunk in pd.read_csv(
+            LABEVENTS_PATH,
+            usecols=["hadm_id", "itemid", "ref_range_lower", "ref_range_upper", "value"],
+            chunksize=CHUNK_SIZE,
+    ):
+        # filter each chunk for relevant rows: hadm_id belongs to cohort AND itemid is from the
+        sub = chunk[
+            chunk["hadm_id"].isin(hadm_id_set) &
+            chunk["itemid"].isin(itemid_set)
+            ]
+
+        # skip the sub chunk if empty
+        if sub.empty:
+            continue
+
+        sub = sub.copy()
+        # convert datatypes to int
+        sub["hadm_id"] = sub["hadm_id"].astype(int)
+        sub["itemid"] = sub["itemid"].astype(int)
+
+        # iterate over rows to fill the accumulator dicts
+        for row in sub.itertuples(index=False):  # yields each row as tuple
+            # get admission and item id
+            hadm_id = row.hadm_id
+            itemid = row.itemid
+            # convert NaN to None (NaN is float, NaN != NaN). Would give single item in the set for each NaN.
+            lower = None if pd.isna(row.ref_range_lower) else float(row.ref_range_lower)
+            upper = None if pd.isna(row.ref_range_upper) else float(row.ref_range_upper)
+            range_key = (lower, upper)
+
+            # creates empty set for (hadm_id, itemid), if it hasnt been recorded yet, and adds the range key (lower, upper)
+            per_hadm_item_ranges.setdefault((hadm_id, itemid), set()).add(range_key)
+
+            # NaN values are treated as no measurement and skipped
+            if not pd.isna(row.value):
+                try:
+                    value = float(row.value)
+                    per_hadm_item_values.setdefault((hadm_id, itemid), []).append(value)
+                except (ValueError, TypeError):
+                    pass  # non-numeric string values are ignored (blacklist excludes purely non-numeric itemids)
+
+        chunk_counter += 1
+        print(f"Chunk {chunk_counter} processed.")
+
+    print("Scan complete.")
+    return per_hadm_item_ranges, per_hadm_item_values, itemid_set
+
+# --------------------------------------------------------

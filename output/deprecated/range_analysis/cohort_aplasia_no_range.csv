@@ -1,0 +1,12 @@
+itemid,label,n_hadm_ids
+50802,Base Excess,262
+50884,"Bilirubin, Indirect",477
+51082,"Creatinine, Urine",445
+51093,"Osmolality, Urine",322
+51097,"Potassium, Urine",149
+51100,"Sodium, Urine",321
+51104,"Urea Nitrogen, Urine",174
+51564,ARCH-1,274
+51657,HPE1,401
+51659,HPE3,392
+51663,HPE7,349
