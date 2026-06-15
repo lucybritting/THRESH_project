@@ -16,9 +16,9 @@ run_scan_step(args)
 run_merge_step(args)
 # create discretised mapping
 run_mapping_step(args)
+# separate the cohorts into 5 stratified, grouped folds (train/test)
+run_fold_step(args)
 
-
-# TODO: separate the cohorts into 5 folds and train-test sets
 
 # TODO: implement imputation
 # TODO: implement oversampling

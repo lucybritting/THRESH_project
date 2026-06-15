@@ -53,6 +53,10 @@ def merge_warnings_path(cohort: str, strategy_name: str) -> Path:
     return OUTPUT_DIR / cohort / "ranges" / f"{cohort}_warnings_{strategy_name}.csv"
 
 
+def fold_path(cohort: str, fold_idx: int) -> Path:
+    return DATA_DIR / "folds" / cohort / f"fold_{fold_idx}.pkl"
+
+
 # ---------- CREATE DIRECTORIES -------------------------
 def create_analysis_dir() -> Path:
     analysis_dir = analysis_path()
@@ -139,7 +143,7 @@ def load_cohort(cohort: str) -> pd.DataFrame:  # hadm_id, label, demographics
     :return: pd.DataFrame
     """
     path = DATA_DIR / "cohorts" / f"{cohort}.csv.gz"
-    return pd.read_csv(path, usecols=["hadm_id", "gender", "age", "label"])
+    return pd.read_csv(path, usecols=["subject_id", "hadm_id", "gender", "age", "label"])
 
 
 # ---------- SAVE FUNCTIONS -----------------------------
@@ -189,6 +193,17 @@ def save_merged_ranges(cohort: str, merged: dict,
             merged.items()]  # list of dicts. Each dict gives a row in the output csv. k, v are key, values from the merged dict
     pd.DataFrame(rows).to_csv(merged_ranges_path(cohort, strategy_name), index=False)
     print(f"Saved merged ranges ({strategy_name}) for cohort {cohort}.")
+
+
+def save_fold(cohort: str, fold_idx: int, train, test) -> None:
+    """
+    Saves one fold as a pickled (train, test) tuple. Each split is an (n, 2)
+    numpy array of [subject_id, hadm_id].
+    """
+    path = fold_path(cohort, fold_idx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump((train, test), f)
 
 
 # --------------- SCAN LABEVENTS -------------------------
