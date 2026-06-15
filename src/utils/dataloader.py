@@ -54,7 +54,7 @@ def merge_warnings_path(cohort: str, strategy_name: str) -> Path:
 
 
 def fold_path(cohort: str, fold_idx: int) -> Path:
-    return DATA_DIR / "folds" / cohort / f"fold_{fold_idx}.pkl"
+    return OUTPUT_DIR / cohort / "folds" / f"fold_{fold_idx}.pkl"
 
 
 # ---------- CREATE DIRECTORIES -------------------------
