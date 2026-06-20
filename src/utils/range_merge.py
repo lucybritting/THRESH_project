@@ -104,3 +104,11 @@ class AverageRange(RangeMergeStrategy):
                 self.warning_log.add(hadm_id, itemid, lower, upper)
             return None, None
         return lower, upper
+
+
+def make_merge_strategies() -> list:
+    return [
+        WidestRange(warning_log=MergeWarningLog()),
+        AverageRange(warning_log=MergeWarningLog()),
+        NarrowestRange(warning_log=MergeWarningLog()),
+    ]

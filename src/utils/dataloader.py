@@ -1,20 +1,8 @@
 import pickle
-from pathlib import Path
 from typing import Tuple
-
 import pandas as pd
 
-# ---- Directories and file paths
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "output"
-
-LABEVENTS_PATH = DATA_DIR / "raw_files/labevents.csv.gz"
-D_LABITEMS_PATH = DATA_DIR / "raw_files/d_labitems.csv.gz"
-ADMISSIONS_PATH = DATA_DIR / "raw_files/admissions.csv.gz"
-PATIENTS_PATH = DATA_DIR / "raw_files/patients.csv.gz"
-
-CHUNK_SIZE = 1000000000
-
+from config import *
 
 # ---------- PATHS --------------------------------------
 def analysis_path() -> Path:
@@ -27,6 +15,9 @@ def blacklist_path() -> Path:
 
 def top100itemids_path() -> Path:
     return DATA_DIR / "top_features" / "all_mimctop100_features_hadm.pkl"
+
+def cohort_path(cohort: str) -> Path:
+    return DATA_DIR / "cohorts" / f"{cohort}.csv.gz"
 
 
 def binary_mapping_path(cohort: str) -> Path:
@@ -55,6 +46,9 @@ def merge_warnings_path(cohort: str, strategy_name: str) -> Path:
 
 def fold_path(cohort: str, fold_idx: int) -> Path:
     return OUTPUT_DIR / cohort / "folds" / f"fold_{fold_idx}.pkl"
+
+def metric_summary_path(cohort: str) -> Path:
+  return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_performance_summary.csv"
 
 
 # ---------- CREATE DIRECTORIES -------------------------
@@ -87,6 +81,11 @@ def create_output_directories(cohorts: list[str]) -> Tuple[list, list]:
 
 
 # ---------- LOAD FUNCTIONS -----------------------------
+def list_cohorts() -> list[str]:
+    """Return all cohort names found in data/cohorts (file name without the .csv.gz suffix)."""
+    cohorts_dir = DATA_DIR / "cohorts"
+    return sorted(p.name.removesuffix(".csv.gz") for p in cohorts_dir.glob("*.csv.gz"))
+
 def load_top100_itemids() -> set[int]:
     with open(top100itemids_path(), "rb") as f:
         itemids = set(pickle.load(f))
@@ -100,6 +99,13 @@ def load_all_itemids() -> set[int]:
 
 def load_continuous_values(cohort: str) -> pd.DataFrame:
     return pd.read_csv(continuous_mapping_path(cohort))
+
+def load_discrete_values(cohort: str, range_merge: str) -> pd.DataFrame:
+    return pd.read_csv(discrete_mapping_path(cohort, range_merge))
+
+def load_binary_values(cohort: str) -> pd.DataFrame:
+    return pd.read_csv(binary_mapping_path(cohort))
+
 
 
 def load_blacklist() -> set[int]:
@@ -136,14 +142,22 @@ def load_merged_ranges(cohort: str, strategy_name: str) -> dict[tuple, tuple]:
     return merged
 
 
+def load_fold(cohort: str, fold_idx: int) -> tuple:
+    """
+    Loads one fold. Returns the (train, test) tuple, each an (n, 2) numpy array
+    of [subject_id, hadm_id].
+    """
+    with open(fold_path(cohort, fold_idx), "rb") as f:
+        return pickle.load(f)
+
+
 def load_cohort(cohort: str) -> pd.DataFrame:  # hadm_id, label, demographics
     """
     Reads in the cohort file. Only the columns hadm_id, gender, age, label
     :param cohort: string. Name of the cohort.
     :return: pd.DataFrame
     """
-    path = DATA_DIR / "cohorts" / f"{cohort}.csv.gz"
-    return pd.read_csv(path, usecols=["subject_id", "hadm_id", "gender", "age", "label"])
+    return pd.read_csv(cohort_path(cohort), usecols=["subject_id", "hadm_id", "gender", "age", "label"])
 
 
 # ---------- SAVE FUNCTIONS -----------------------------
@@ -183,7 +197,7 @@ def save_ranges(cohort: str, cohort_ranges: dict) -> None:
                 "ref_range_upper": upper,
             })
     df = pd.DataFrame(rows)
-    df.to_csv(ranges_path(cohort))
+    df.to_csv(ranges_path(cohort), index=False)
 
 
 def save_merged_ranges(cohort: str, merged: dict,
@@ -204,6 +218,10 @@ def save_fold(cohort: str, fold_idx: int, train, test) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         pickle.dump((train, test), f)
+
+def save_metric_summary(cohort: str, summary_df: pd.DataFrame) -> None:
+    summary_df.to_csv(metric_summary_path(cohort), index=False)
+    print(f"Saved metric summary for cohort {cohort}.")
 
 
 # --------------- SCAN LABEVENTS -------------------------
