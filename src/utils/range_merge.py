@@ -112,3 +112,4 @@ def make_merge_strategies() -> list:
         AverageRange(warning_log=MergeWarningLog()),
         NarrowestRange(warning_log=MergeWarningLog()),
     ]
+

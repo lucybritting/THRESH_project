@@ -270,7 +270,7 @@ def _knn_impute_ranges(real_ranges: dict, train_hadms: set, demo: pd.DataFrame,
             )
     return imputed
 
-def _impute_disc(cont_df: pd.DataFrame, train_split: np.array, demo: pd.DataFrame, merged_ranges) -> pd.DataFrame:
+def _impute_disc(cont_df: pd.DataFrame, train_split: np.array, demo: pd.DataFrame, merged_ranges, k: int = BEST_KNN) -> pd.DataFrame:
     # get existing ranges
     real_ranges = {key: val for key, val in merged_ranges.items()
                    if val[0] is not None or val[1] is not None} # dict (hadm_id, itemid) -> (lower, upper)
@@ -287,7 +287,7 @@ def _impute_disc(cont_df: pd.DataFrame, train_split: np.array, demo: pd.DataFram
     targets = targets.merge(demo, left_on="hadm_id", right_index=True)
     # get knn for the (hadm_id, itemid) pairs with missing range
     train_hadms = {int(h) for h in train_split[:, 1]}  # set of training hadm_ids
-    imputed = _knn_impute_ranges(real_ranges, train_hadms, demo, targets, BEST_KNN) # dict: (hadm_id, itemid) -> (lower, upper)
+    imputed = _knn_impute_ranges(real_ranges, train_hadms, demo, targets, k) # dict: (hadm_id, itemid) -> (lower, upper)
 
     # merge real ranges with the imputed ones (keys are disjoint: targets have no real range),
     lookup = {**real_ranges, **imputed}
