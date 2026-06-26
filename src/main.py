@@ -23,7 +23,6 @@ for cohort in cohorts:
     run_mapping_step(cohort)
     # separate the cohort into 5 stratified, grouped folds (train/test)
     run_fold_step(cohort)
-    # TODO: implement imputation / understand implementation
     # train classifiers with 5-fold cross validation
     train(cohort)
 
