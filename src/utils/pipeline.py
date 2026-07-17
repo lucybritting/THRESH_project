@@ -27,11 +27,15 @@ CLASSIFIERS = {
 
 FOLD_SEED = 42
 
-def run_scan_step(cohorts) -> None:
+def run_scan_step(cohorts, purge: bool = False) -> None:
     # --------------------------- Create continuous and binary mapping, ranges from labevents ------------------------
     # read in the cohort files to get cohort
     cohort_dfs = {cohort: load_cohort(cohort) for cohort in
                   cohorts}  # dict: cohort_name --> DataFrame {string: dataframe}
+
+    # delete existing cohort outputs so everything downstream is rebuilt from scratch
+    if purge:
+        remove_directories(cohorts)
 
     # create output directories for cohorts, check for which cohorts the ranges file already exist
     have_ranges, need_ranges = create_output_directories(cohorts)  # lists of strings

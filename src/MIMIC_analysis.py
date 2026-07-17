@@ -11,6 +11,7 @@ class ItemStats:
     hadm_no_range: set = field(default_factory=set)  # hadm_ids with a value but no range
     hadm_with_value: set = field(default_factory=set)  # hadm_ids that had at least one non-NaN value
     numeric_count: int = 0
+    numeric_values: set = field(default_factory=set) # unique float values
     string_count: int = 0
     string_values: set = field(default_factory=set)  # unique normalised non-numeric string values
 
@@ -97,7 +98,8 @@ def run_mimic_analysis():
             if not pd.isna(row.value):
                 s.hadm_with_value.add(hadm_id)
                 try:
-                    float(row.value)
+                    v = float(row.value)
+                    s.numeric_values.add(v)
                     s.numeric_count += 1
                 except (ValueError, TypeError):
                     s.string_count += 1
@@ -201,11 +203,22 @@ def run_mimic_analysis():
 
     run_range_stratification_analysis(stats, item_labels, analysis_dir)
 
-    # create blacklist with itemids that only have non-numeric values
-    blacklist = {itemid for itemid, s in stats.items() if s.numeric_count == 0}
+    # create blacklist with itemids that only have non-numeric values or less than 10 unique values.
+    blacklist = {itemid for itemid, s in stats.items() if (len(s.numeric_values) < 10)}
     with open(analysis_dir / "itemid_blacklist.txt", "w") as f:
         f.write("\n".join(str(iid) for iid in sorted(blacklist)))
     print(f"Saved itemid_blacklist.txt ({len(blacklist)} blacklisted itemids)")
+
+    # readable analysis of the blacklisted itemids.
+    blacklist_rows = [{
+        "itemid": itemid,
+        "label": item_labels.get(itemid),
+        "n_numeric_values": stats[itemid].numeric_count,  # total numeric entries
+        "n_unique_numeric_values": len(stats[itemid].numeric_values),  # the blacklist criterion
+    } for itemid in sorted(blacklist)]
+    blacklist_df = pd.DataFrame(blacklist_rows)
+    blacklist_df.to_csv(analysis_dir / "mimic_blacklist_analysis.csv", index=False)
+    print("Saved mimic_blacklist_analysis.csv")
 
 
 if __name__ == "__main__":
