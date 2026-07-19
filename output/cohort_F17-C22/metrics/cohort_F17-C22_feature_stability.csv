@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_F17-C22,cont,5,365,0.887241029309777
+cohort_F17-C22,disc,5,365,0.946464066876899
+cohort_F17-C22,disc_imp,5,365,0.9442159400000827
+cohort_F17-C22,bin,5,365,0.9237754751766062

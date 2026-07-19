@@ -1,8 +1,10 @@
 import warnings
 
 import numpy as np
+from scipy.stats import friedmanchisquare, rankdata
 from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.neighbors import NearestNeighbors
+from sklearn.inspection import permutation_importance
 
 from catboost import CatBoostClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -12,6 +14,8 @@ from sklearn.metrics import (roc_auc_score, average_precision_score,
                                f1_score, matthews_corrcoef, balanced_accuracy_score)
 
 from utils.dataloader import *
+from utils.plots import (plot_rank_shift_slope_chart, plot_rank_bump_chart,
+                         plot_kendalls_w_heatmap, plot_importance_rank_heatmap)
 from utils.range_merge import make_merge_strategies
 from config import *
 
@@ -26,6 +30,9 @@ CLASSIFIERS = {
     }
 
 FOLD_SEED = 42
+
+MIN_FEATURE_PREVALENCE = 0.01
+STABILITY_FEATURE_SETS = ["cont", "disc", "disc_imp", "bin"]
 
 def run_scan_step(cohorts, purge: bool = False) -> None:
     # --------------------------- Create continuous and binary mapping, ranges from labevents ------------------------
@@ -299,7 +306,24 @@ def _impute_disc(cont_df: pd.DataFrame, train_split: np.array, demo: pd.DataFram
     disc = _discretise(cont_df, lookup).add_prefix("disc_imp_")
     return disc
 
-def train(cohort: str) -> None:
+
+
+def _split_feature_name(feature_name: str) -> tuple:
+    """
+    Splits a model feature name into representation and itemid. The prefixes are the ones added in
+    train() ("cont_", "bin_", "disc_imp_"); the plain discrete frame keeps the bare itemid.
+    :param feature_name: string, e.g. "cont_50902", "disc_imp_50902" or "50902"
+    :return: tuple (representation, itemid), e.g. ("cont", 50902) or ("disc", 50902)
+    """
+    prefix, _, itemid = feature_name.rpartition("_")  # split on the LAST underscore -> keeps "disc_imp" intact
+    if not prefix:
+        return "disc", int(itemid)  # no prefix -> plain discrete frame
+    return prefix, int(itemid)
+
+
+
+def train(cohort: str, balanced_rf_only: bool = False) -> None:
+    classifiers = {"balanced_rf": CLASSIFIERS["balanced_rf"]} if balanced_rf_only else CLASSIFIERS
     print(f"Training {cohort}...")
     # load once per cohort:
     merged_ranges = load_merged_ranges(cohort, BEST_MERGE_STRATEGY)
@@ -316,7 +340,9 @@ def train(cohort: str) -> None:
 
     # dict: {feature set --> dict {model --> list [dict per fold {measure --> value}, ...]}}
     feature_list = ["cont", "disc", "disc_imp", "bin", "cont_bin", "disc_bin"]
-    all_results = {feat_name: {name: [] for name in CLASSIFIERS} for feat_name in feature_list}
+    all_results = {feat_name: {name: [] for name in classifiers} for feat_name in feature_list}
+
+    importance_rows = []
 
     # ----- cross validation loop (over 5 folds)---------------------------
     for fold_idx in range(N_FOLDS):
@@ -339,8 +365,21 @@ def train(cohort: str) -> None:
         }
         # train_split each classifier for each feature set
         for feature_set_name, (X_train, X_test) in feature_sets.items():
-            for classifier_name, classifier in CLASSIFIERS.items():
+            for classifier_name, classifier in classifiers.items():
                 model = classifier().fit(X_train, y_train) # build a fresh classifier instance in each call
+                # feature importance
+                if classifier_name == "balanced_rf" and feature_set_name in STABILITY_FEATURE_SETS:
+                    for feat_name, imp in zip(X_train.columns, model.feature_importances_):
+                        representation, itemid = _split_feature_name(feat_name)
+                        importance_rows.append({
+                            "cohort": cohort,
+                            "feature_set": feature_set_name,
+                            "fold": fold_idx,
+                            "feature": feat_name,
+                            "itemid": itemid,
+                            "representation": representation,
+                            "importance": imp,
+                        })
                 # predict
                 y_prob = model.predict_proba(X_test)[:, 1]  # P(positive class) — for ranking metrics
                 y_pred = model.predict(X_test)  # hard 0/1 labels   — for threshold metrics
@@ -353,16 +392,175 @@ def train(cohort: str) -> None:
                     "balanced_acc": balanced_accuracy_score(y_test, y_pred),
                 }
                 all_results[feature_set_name][classifier_name].append(results)
+    if importance_rows:
+        save_feature_importance(cohort, pd.DataFrame(importance_rows))
 
     # build combined summary table
     rows = []
-    for classifier_name in CLASSIFIERS:
+    for classifier_name in classifiers:
         for metric in METRICS:
             row = {"model": classifier_name, "measure": metric}
             for feature_set_name in feature_list:
                 fold_values = [fold[metric] for fold in all_results[feature_set_name][classifier_name]]
                 row[f"mean_{feature_set_name}"] = np.mean(fold_values)
-                #row[f"std_{feature_set_name}"] = np.std(fold_values)
+                row[f"std_{feature_set_name}"] = np.std(fold_values, ddof=1) # sample std, as in the shift analysis
             rows.append(row)
     summary_df = pd.DataFrame(rows)
     save_metric_summary(cohort, summary_df)
+
+def _kendalls_w(rank_matrix: np.ndarray) -> float: # (m folds, n features)
+    # Do the 5 folds rank the feature importance of the itemids the same way?
+    m, n = rank_matrix.shape
+    R = rank_matrix.sum(axis=0) # R_i: sum ranks over the folds for each feature
+    S = ((R-R.mean())**2).sum() # S = sum of squared deviations
+    # tie correction
+    tie_term = 0.0
+    for ranks in rank_matrix:
+        _,counts = np.unique(ranks, return_counts=True)
+        tie_term +=(counts**3-counts).sum()
+    W = (12*S) / (m**2*(n**3-n)- m * tie_term)
+    return W
+
+def cohort_feature_importance_analysis(cohort: str) -> None:
+    # FEATURE STABILITY ANALYSIS ACROSS 5 FOLDS
+    # compare the feature importance between the 5 folds using Kendalls W
+    importance_df = load_feature_importance(cohort) # one row per (feature_set, fold, feature)
+
+    # drop itemids that are never used: 0.0 importance in every fold of every representation
+    max_per_itemid = importance_df.groupby("itemid")["importance"].transform("max") # group all rows with the same itemid, then take its max, then broadcast max back --> mask
+    importance_df = importance_df[max_per_itemid > 0.0] # filter with mask
+
+    # split into one frame per representation, all sharing the same itemids after the filter above
+    by_representation = {rep: importance_df[importance_df["representation"] == rep]
+                         for rep in STABILITY_FEATURE_SETS}
+    # create rank matrix for each representation (m folds, n features)
+    rank_matrices = {} # representation -> np.ndarray (m folds, n features)
+    for rep, rep_df in by_representation.items():
+        # wide: one row per fold, one column per itemid (columns sorted, so the same column is the same feature in every row)
+        wide = rep_df.pivot(index="fold", columns="itemid", values="importance") # change from long format (one row per fold, itemid) to wide: rows = fold, columns = itemid
+        # rank the features against each other within each fold; ties share their average rank
+        rank_matrices[rep] = rankdata(wide.to_numpy(), axis=1)
+
+
+    # agreement of the folds on the feature ranking, per representation
+    kendalls_w = {rep: _kendalls_w(rank_matrix) for rep, rank_matrix in rank_matrices.items()}
+
+    # one row per representation; n_folds/n_features record what W was computed over
+    stability_df = pd.DataFrame([{"cohort": cohort,
+                                  "representation": rep,
+                                  "n_folds": rank_matrices[rep].shape[0],
+                                  "n_features": rank_matrices[rep].shape[1],
+                                  "kendalls_w": w}
+                                 for rep, w in kendalls_w.items()])
+    save_feature_stability(cohort, stability_df)
+
+
+    # FEATURE IMPORTANCE SHIFT ANALYSIS BETWEEN REPRESENTATIONS
+    mean_df = importance_df.pivot_table(index="itemid", columns="representation",
+                                        values="importance", aggfunc="mean") # rows: itemids, columns: representations, values: mean importances
+    std_df = importance_df.pivot_table(index="itemid", columns="representation",
+                                       values="importance",
+                                       aggfunc="std")
+    mean_df.columns = [f"mean_{rep}" for rep in mean_df.columns]
+    std_df.columns = [f"std_{rep}" for rep in std_df.columns]
+    shift_df = pd.concat([mean_df, std_df], axis=1).reset_index()
+
+    save_feature_shift(cohort, shift_df)
+
+    # create slope chart
+    ranks = {rep:shift_df.set_index("itemid")[f"mean_{rep}"].rank(ascending=False, method="min") for rep in STABILITY_FEATURE_SETS}
+    item_labels = load_labitem_labels()
+
+    def slope_data(left_rep: str, right_rep: str, top_k: int = 20) -> pd.DataFrame:
+        left, right = ranks[left_rep], ranks[right_rep]
+        # select on the mean of both ranks. So neither representation is favoured.
+        selected = ((left + right)/2).nsmallest(top_k).index
+        return pd.DataFrame({"label": [item_labels.get(itemid,itemid) for itemid in selected],
+                             "rank_left": left[selected].to_numpy(),
+                             "rank_right": right[selected].to_numpy()})
+
+    cont_disc = slope_data("cont", "disc")
+    disc_bin = slope_data("disc", "bin")
+
+    plot_rank_shift_slope_chart(
+        panels=[("continuous", "discretised", cont_disc),
+                ("discretised", "binarised", disc_bin)],
+        title=f"Feature importance rank shift between representations — {cohort}",
+        subtitle="top 20 labs per comparison, ranked by mean importance across the folds; "
+                 "1 = most important",
+        path=figure_path(cohort, "rank_shift"))
+
+    # create rank bump chart: how each feature's rank moves across the 5 folds
+    def bump_data(rep: str, top_k: int = 20) -> pd.DataFrame:
+        wide = by_representation[rep].pivot(index="fold", columns="itemid", values="importance")
+        # rank within each fold, 1 = most important, then one row per feature
+        fold_ranks = wide.rank(axis=1, ascending=False, method="min").transpose()
+        selected = fold_ranks.mean(axis=1).nsmallest(top_k).index
+        return fold_ranks.loc[selected].rename(index=lambda itemid: item_labels.get(itemid, itemid))
+
+    rep_labels = {"cont": "continuous", "disc": "discretised",
+                  "disc_imp": "discretised + imputed", "bin": "binarised"}
+    bump_panels = []
+    for rep in STABILITY_FEATURE_SETS:
+        fold_ranks = bump_data(rep)
+        # each panel accents its own top 5, so the accent means "top of this
+        # representation" everywhere; the end labels carry which lab it is
+        top5 = list(fold_ranks.mean(axis=1).nsmallest(5).index)
+        bump_panels.append((rep_labels[rep], fold_ranks, top5))
+
+    plot_rank_bump_chart(
+        panels=bump_panels,
+        title=f"Feature importance rank across folds — {cohort}",
+        subtitle="top 20 labs per representation, the top 5 accented and named. "
+                 "flat lines = the folds agree on the ordering",
+        path=figure_path(cohort, "rank_bump"))
+
+def feature_importance_analysis(cohorts: list[str], top_k: int = 20) -> None:
+    # get heatmap for all cohorts and most important features
+    # stack the per-cohort mean importances written by cohort_feature_importance_analysis
+    shift_dfs = {cohort: load_feature_shift(cohort).set_index("itemid") for cohort in cohorts}
+    item_labels = load_labitem_labels()
+
+    # one frame per representation: rows are cohorts, columns are itemids
+    by_representation = {rep: pd.DataFrame({cohort: shift_df[f"mean_{rep}"]
+                                            for cohort, shift_df in shift_dfs.items()}).transpose()
+                         for rep in STABILITY_FEATURE_SETS}
+
+    rep_labels = {"cont": "continuous", "disc": "discretised",
+                  "disc_imp": "discretised + imputed", "bin": "binarised"}
+
+    # one grid grouped by cohort, cells are ranks. Ranks are taken over all
+    # features first, so a cell says where the lab sits in that cohort's full ranking
+    rank_rows = {(cohort, rep): shift_dfs[cohort][f"mean_{rep}"].rank(ascending=False, method="min")
+                 for cohort in cohorts for rep in STABILITY_FEATURE_SETS}
+    rank_df = pd.DataFrame(rank_rows).transpose()
+    # order the columns by mean rank, so the broadly important labs come first
+    shown = rank_df.mean().nsmallest(top_k).index
+    captured = pd.concat(by_representation.values())[shown].sum(axis=1)
+
+    rank_df = rank_df[shown].rename(columns=lambda i: item_labels.get(i, i))
+    rank_df.index = [rep_labels[rep] for _, rep in rank_df.index]
+
+    plot_importance_rank_heatmap(
+        rank_df,
+        group_sizes={cohort: len(STABILITY_FEATURE_SETS) for cohort in cohorts},
+        title="Where each lab ranks, by cohort and representation",
+        subtitle=f"the {top_k} labs with the best mean rank, ordered by it. Together they "
+                 f"hold {captured.min():.0%}-{captured.max():.0%} of the total importance",
+        colourbar_label="importance rank",
+        path=reports_path() / "feature_importance_rank_heatmap.png")
+
+    # fold agreement per cohort: one W per (cohort, representation)
+    stability_df = pd.concat([load_feature_stability(cohort) for cohort in cohorts])
+    w_df = stability_df.pivot(index="cohort", columns="representation", values="kendalls_w")
+    w_df = w_df.loc[cohorts, STABILITY_FEATURE_SETS].rename(columns=rep_labels)
+
+    plot_kendalls_w_heatmap(
+        w_df,
+        title="Fold agreement on the feature importance ranking",
+        subtitle="Kendall's W per cohort and representation; 1 = the 5 folds rank the "
+                 "features identically",
+        colourbar_label="Kendall's W",
+        path=reports_path() / "kendalls_w_heatmap.png")
+
+

@@ -52,6 +52,26 @@ def metric_summary_path(cohort: str) -> Path:
   return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_performance_summary.csv"
 
 
+def feature_importance_path(cohort: str) -> Path:
+    return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_feature_importance.csv"
+
+
+def feature_stability_path(cohort: str) -> Path:
+    return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_feature_stability.csv"
+
+
+def feature_shift_path(cohort: str) -> Path:
+    return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_feature_shift.csv"
+
+
+def figure_path(cohort: str, name: str) -> Path:
+    return OUTPUT_DIR / cohort / "figures" / f"{cohort}_{name}.png"
+
+
+def reports_path() -> Path:
+    return OUTPUT_DIR / "reports"  # cross-cohort results, not owned by a single cohort
+
+
 # ---------- CREATE DIRECTORIES -------------------------
 def remove_directories(cohorts: list[str]) -> None:
     """
@@ -72,6 +92,12 @@ def create_analysis_dir() -> Path:
     analysis_dir = analysis_path()
     analysis_dir.mkdir(parents=True, exist_ok=True)
     return analysis_dir
+
+
+def create_reports_dir() -> Path:
+    reports_dir = reports_path()
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    return reports_dir
 
 
 def create_output_directories(cohorts: list[str]) -> Tuple[list, list]:
@@ -124,6 +150,39 @@ def load_discrete_values(cohort: str, range_merge: str) -> pd.DataFrame:
 def load_binary_values(cohort: str) -> pd.DataFrame:
     return pd.read_csv(binary_mapping_path(cohort))
 
+def load_feature_importance(cohort: str) -> pd.DataFrame:
+    """
+    Reads the per-fold feature importances written by train(). One row per
+    (feature_set, fold, feature).
+    :param cohort: string. Name of the cohort to load
+    :return: pd.DataFrame with columns cohort, feature_set, fold, feature, itemid, representation, importance
+    """
+    return pd.read_csv(feature_importance_path(cohort))
+
+
+
+def load_labitem_labels() -> dict[int, str]:
+    """
+    itemid -> human readable lab name, for labelling figures.
+    """
+    d_labitems = pd.read_csv(D_LABITEMS_PATH, usecols=["itemid", "label"])
+    return dict(zip(d_labitems["itemid"], d_labitems["label"]))
+
+
+def load_feature_shift(cohort: str) -> pd.DataFrame:
+    """
+    Reads the per-representation mean/std importance table written by
+    cohort_feature_importance_analysis(). One row per itemid.
+    """
+    return pd.read_csv(feature_shift_path(cohort))
+
+
+def load_feature_stability(cohort: str) -> pd.DataFrame:
+    """
+    Reads the Kendall's W table written by cohort_feature_importance_analysis().
+    :return: pd.DataFrame with columns cohort, representation, n_folds, n_features, kendalls_w
+    """
+    return pd.read_csv(feature_stability_path(cohort))
 
 
 def load_blacklist() -> set[int]:
@@ -240,6 +299,21 @@ def save_fold(cohort: str, fold_idx: int, train, test) -> None:
 def save_metric_summary(cohort: str, summary_df: pd.DataFrame) -> None:
     summary_df.to_csv(metric_summary_path(cohort), index=False)
     print(f"Saved metric summary for cohort {cohort}.")
+
+
+def save_feature_importance(cohort: str, importance_df: pd.DataFrame) -> None:
+    importance_df.to_csv(feature_importance_path(cohort), index=False)
+    print(f"Saved feature importance for cohort {cohort} ({len(importance_df)} rows).")
+
+
+def save_feature_stability(cohort: str, stability_df: pd.DataFrame) -> None:
+    stability_df.to_csv(feature_stability_path(cohort), index=False)
+    print(f"Saved feature stability for cohort {cohort}.")
+
+
+def save_feature_shift(cohort: str, shift_df: pd.DataFrame) -> None:
+    shift_df.to_csv(feature_shift_path(cohort), index=False)
+    print(f"Saved feature shift for cohort {cohort} ({len(shift_df)} features).")
 
 
 # --------------- SCAN LABEVENTS -------------------------
