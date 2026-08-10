@@ -60,6 +60,18 @@ def feature_stability_path(cohort: str) -> Path:
     return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_feature_stability.csv"
 
 
+def test_predictions_path(cohort: str, fold_idx: int) -> Path:
+    return OUTPUT_DIR / cohort / "test_predictions" / f"{cohort}_test_predictions_fold_{fold_idx}.csv"
+
+
+def fairness_path(cohort: str) -> Path:
+    return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_fairness.csv"
+
+
+def fairness_criteria_path(cohort: str) -> Path:
+    return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_fairness_criteria.csv"
+
+
 def feature_shift_path(cohort: str) -> Path:
     return OUTPUT_DIR / cohort / "metrics" / f"{cohort}_feature_shift.csv"
 
@@ -110,7 +122,7 @@ def create_output_directories(cohorts: list[str]) -> Tuple[list, list]:
     need_ranges = []
     for cohort in cohorts:
         base = OUTPUT_DIR / cohort
-        for subdir in ["ranges", "mapping", "folds", "models", "metrics"]:
+        for subdir in ["ranges", "mapping", "folds", "metrics", "test_predictions"]:
             (base / subdir).mkdir(parents=True, exist_ok=True)
         # check if range_file exists
         range_path = ranges_path(cohort)
@@ -169,6 +181,18 @@ def load_labitem_labels() -> dict[int, str]:
     return dict(zip(d_labitems["itemid"], d_labitems["label"]))
 
 
+def load_test_predictions(cohort: str, fold_idx: int | None = None) -> pd.DataFrame:
+    """
+    Reads the held-out predictions written by train().
+    :param fold_idx: a single fold, or None for all folds concatenated
+    :return: pd.DataFrame with columns cohort, fold, feature_set, classifier,
+             hadm_id, age, gender, y_true, y_prob, y_pred
+    """
+    folds = range(N_FOLDS) if fold_idx is None else [fold_idx]
+    return pd.concat([pd.read_csv(test_predictions_path(cohort, fold)) for fold in folds],
+                     ignore_index=True)
+
+
 def load_feature_shift(cohort: str) -> pd.DataFrame:
     """
     Reads the per-representation mean/std importance table written by
@@ -183,6 +207,23 @@ def load_feature_stability(cohort: str) -> pd.DataFrame:
     :return: pd.DataFrame with columns cohort, representation, n_folds, n_features, kendalls_w
     """
     return pd.read_csv(feature_stability_path(cohort))
+
+
+def load_fairness(cohort: str) -> pd.DataFrame:
+    """
+    Reads the per-group performance table written by cohort_fairness_analysis(). One row per
+    (feature_set, attribute, group), carrying n, n_positive and the per-group rates.
+    """
+    return pd.read_csv(fairness_path(cohort))
+
+
+def load_fairness_criteria(cohort: str) -> pd.DataFrame:
+    """
+    Reads the fairness criteria (gaps) table written by cohort_fairness_analysis(). One row
+    per (feature_set, attribute, criterion): cohort, feature_set, classifier,
+    attribute, criterion, quantity, difference, ratio, min_group, max_group, ...
+    """
+    return pd.read_csv(fairness_criteria_path(cohort))
 
 
 def load_blacklist() -> set[int]:
@@ -301,6 +342,14 @@ def save_metric_summary(cohort: str, summary_df: pd.DataFrame) -> None:
     print(f"Saved metric summary for cohort {cohort}.")
 
 
+def load_metric_summary(cohort: str) -> pd.DataFrame:
+    """
+    Reads the performance summary written by train(): one row per (model, measure),
+    with mean_<feature_set> / std_<feature_set> columns per representation.
+    """
+    return pd.read_csv(metric_summary_path(cohort))
+
+
 def save_feature_importance(cohort: str, importance_df: pd.DataFrame) -> None:
     importance_df.to_csv(feature_importance_path(cohort), index=False)
     print(f"Saved feature importance for cohort {cohort} ({len(importance_df)} rows).")
@@ -309,6 +358,32 @@ def save_feature_importance(cohort: str, importance_df: pd.DataFrame) -> None:
 def save_feature_stability(cohort: str, stability_df: pd.DataFrame) -> None:
     stability_df.to_csv(feature_stability_path(cohort), index=False)
     print(f"Saved feature stability for cohort {cohort}.")
+
+
+def save_fairness(cohort: str, fairness_df: pd.DataFrame) -> None:
+    fairness_df.to_csv(fairness_path(cohort), index=False)
+    print(f"Saved fairness analysis for cohort {cohort} ({len(fairness_df)} rows).")
+
+
+def save_fairness_criteria(cohort: str, criteria_df: pd.DataFrame) -> None:
+    """
+    Writes the fairness criteria: one row per (feature_set, attribute, criterion),
+    each holding the gap between that attribute's best and worst group.
+    """
+    criteria_df.to_csv(fairness_criteria_path(cohort), index=False)
+    print(f"Saved fairness criteria for cohort {cohort} ({len(criteria_df)} rows).")
+
+
+def save_test_predictions(cohort: str, fold_idx: int, predictions_df: pd.DataFrame) -> None:
+    """
+    Writes one fold's held-out predictions, one row per
+    (feature_set, classifier, hadm_id), carrying the demographics needed to
+    stratify them for a fairness analysis.
+    """
+    path = test_predictions_path(cohort, fold_idx)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    predictions_df.to_csv(path, index=False)
+    print(f"Saved test predictions for cohort {cohort}, fold {fold_idx} ({len(predictions_df)} rows).")
 
 
 def save_feature_shift(cohort: str, shift_df: pd.DataFrame) -> None:

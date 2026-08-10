@@ -12,8 +12,8 @@ Scans the raw MIMIC labevents file to extract reference ranges per (hadm_id, ite
 
 | File | Description |
 |---|---|
-| `data/raw_files/labevents.csv.gz` | Raw MIMIC labevents, scanned in chunks |
-| `data/raw_files/d_labitems.csv.gz` | Lab item labels, used to annotate output tables |
+| `../../data/raw_files/labevents.csv.gz` | Raw MIMIC labevents, scanned in chunks |
+| `../../data/raw_files/d_labitems.csv.gz` | Lab item labels, used to annotate output tables |
 | `data/preprocessed_files/aggregated/{cohort}_agg.csv` | Aggregated lab values per admission, one row per hadm_id |
 | `data/cohorts/{cohort}.csv.gz` | Cohort file, used to read discharge times for time-window filtering |
 
@@ -101,7 +101,7 @@ Tests and inspection tool for verifying the output of the discretisation pipelin
 | `cohort_{cohort}_multi_range.csv` | `range_analysis/` | Per-itemid summary for items with multiple ranges |
 | `cohort_{cohort}_single_range.csv` | `range_analysis/` | Per-itemid summary for items with a single range |
 | `cohort_{cohort}_no_range.csv` | `range_analysis/` | Items with no reference range |
-| `data/cohorts/{cohort}.csv.gz` | `data/cohorts/` | Cohort file, used to verify hadm_id membership |
+| `data/cohorts/{cohort}.csv.gz` | `../../data/cohorts` | Cohort file, used to verify hadm_id membership |
 
 ### Arguments
 
