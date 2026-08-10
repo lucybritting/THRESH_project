@@ -17,8 +17,20 @@ def blacklist_path() -> Path:
 def top100itemids_path() -> Path:
     return DATA_DIR / "top_features" / "all_mimctop100_features_hadm.pkl"
 
+# cohort CSVs live in one of these sub-folders of data/, chosen at runtime via main's
+# --cohort_folder ("all" -> representative_cohorts, "test" -> cohorts)
+COHORT_FOLDERS = {"all": "representative_cohorts", "test": "cohorts"}
+_cohort_dir = DATA_DIR / COHORT_FOLDERS["all"]
+
+
+def set_cohort_folder(which: str) -> None:
+    """Choose the cohort source folder: 'all' -> representative_cohorts, 'test' -> cohorts."""
+    global _cohort_dir
+    _cohort_dir = DATA_DIR / COHORT_FOLDERS[which]
+
+
 def cohort_path(cohort: str) -> Path:
-    return DATA_DIR / "cohorts" / f"{cohort}.csv.gz"
+    return _cohort_dir / f"{cohort}.csv.gz"
 
 
 def binary_mapping_path(cohort: str) -> Path:
@@ -138,9 +150,8 @@ def create_output_directories(cohorts: list[str]) -> Tuple[list, list]:
 
 # ---------- LOAD FUNCTIONS -----------------------------
 def list_cohorts() -> list[str]:
-    """Return all cohort names found in data/cohorts (file name without the .csv.gz suffix)."""
-    cohorts_dir = DATA_DIR / "cohorts"
-    return sorted(p.name.removesuffix(".csv.gz") for p in cohorts_dir.glob("*.csv.gz"))
+    """Cohort names in the selected cohort folder (file name without the .csv.gz suffix)."""
+    return sorted(p.name.removesuffix(".csv.gz") for p in _cohort_dir.glob("*.csv.gz"))
 
 def load_top100_itemids() -> set[int]:
     with open(top100itemids_path(), "rb") as f:
