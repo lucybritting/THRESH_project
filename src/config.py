@@ -9,6 +9,14 @@ D_LABITEMS_PATH = DATA_DIR / "raw_files/d_labitems.csv.gz"
 ADMISSIONS_PATH = DATA_DIR / "raw_files/admissions.csv.gz"
 PATIENTS_PATH = DATA_DIR / "raw_files/patients.csv.gz"
 
+# cohort CSVs are read from one of these sub-folders of data/, chosen via main's
+# --cohort_folder argument
+COHORT_FOLDERS = {
+    "all": "representative_cohorts",           # every representative cohort
+    "subset": "representative_cohorts_subset",  # one cohort per code1
+    "test": "cohorts",                          # small test set
+}
+
 CHUNK_SIZE = 5000000
 
 # set true if only use the top100labs. If false, all labs are considered

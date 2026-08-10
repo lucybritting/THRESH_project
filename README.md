@@ -14,8 +14,8 @@ config.py
 ## Workflow
 1. Set global variables in `config.py`
 2. Run `MIMIC_analysis.py`: 
-3. Run `main.py`: python main.py --cohort_folder {test|all}
-    --cohort_folder (required): `all` runs every cohort in `data/representative_cohorts`, `test` runs the cohorts in `data/cohorts`.
+3. Run `main.py`: python main.py --cohort_folder {test|all|subset}
+    --cohort_folder (required): `all` runs every cohort in `data/representative_cohorts`, `subset` runs `data/representative_cohorts_subset` (one cohort per code1), `test` runs the cohorts in `data/cohorts`.
     --purge to delete all cohort outputs and rebuild them from scratch
     --balanced_rf_only to only train on balanced random forest. catboost and random forest are skipped.
 
@@ -237,7 +237,7 @@ TODO
 Main file to run the pipeline. Implements the function from `pipeline.py`.
 In each step the information is written to csv file. In the analysis steps, these csv files are read in. 
 
-Flag `--cohort_folder` (required): `all` runs every cohort in `data/representative_cohorts/`, `test` runs the cohorts in `data/cohorts/`.
+Flag `--cohort_folder` (required): `all` runs every cohort in `data/representative_cohorts/`, `subset` runs `data/representative_cohorts_subset/` (one cohort per code1), `test` runs the cohorts in `data/cohorts/`.
 Flag `-purge`: delete all cohort outputs and rebuild them from scratch.
 Flag `--balanced_rf_only`: Train only balanced random forest. Random forest and catboost are skipped. 
 

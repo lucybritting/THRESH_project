@@ -17,14 +17,12 @@ def blacklist_path() -> Path:
 def top100itemids_path() -> Path:
     return DATA_DIR / "top_features" / "all_mimctop100_features_hadm.pkl"
 
-# cohort CSVs live in one of these sub-folders of data/, chosen at runtime via main's
-# --cohort_folder ("all" -> representative_cohorts, "test" -> cohorts)
-COHORT_FOLDERS = {"all": "representative_cohorts", "test": "cohorts"}
+# the cohort source folder, chosen at runtime from COHORT_FOLDERS (see config.py)
 _cohort_dir = DATA_DIR / COHORT_FOLDERS["all"]
 
 
 def set_cohort_folder(which: str) -> None:
-    """Choose the cohort source folder: 'all' -> representative_cohorts, 'test' -> cohorts."""
+    """Choose the cohort source folder by COHORT_FOLDERS key ('all' / 'subset' / 'test')."""
     global _cohort_dir
     _cohort_dir = DATA_DIR / COHORT_FOLDERS[which]
 
