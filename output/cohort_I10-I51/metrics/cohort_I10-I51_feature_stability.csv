@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_I10-I51,cont,5,231,0.9792823083810946
+cohort_I10-I51,disc,5,231,0.9898843164189658
+cohort_I10-I51,disc_imp,5,231,0.9901898644187301
+cohort_I10-I51,bin,5,231,0.9905833595553576

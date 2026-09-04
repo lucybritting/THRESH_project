@@ -1,5 +1,0 @@
-cohort,representation,n_folds,n_features,kendalls_w
-mimic_cohort_aplasia_45_days,cont,5,377,0.9718381252639512
-mimic_cohort_aplasia_45_days,disc,5,377,0.989753817878746
-mimic_cohort_aplasia_45_days,disc_imp,5,377,0.990008610736094
-mimic_cohort_aplasia_45_days,bin,5,377,0.9830461888597317

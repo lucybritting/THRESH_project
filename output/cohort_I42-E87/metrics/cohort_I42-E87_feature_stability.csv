@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_I42-E87,cont,5,203,0.9796320180460968
+cohort_I42-E87,disc,5,203,0.9855868131004245
+cohort_I42-E87,disc_imp,5,203,0.9857115641511772
+cohort_I42-E87,bin,5,203,0.9844857259055394

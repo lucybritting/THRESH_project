@@ -1,33 +1,59 @@
 import argparse
-from utils.pipeline import run_scan_step, run_merge_step, run_mapping_step, run_fold_step, train, list_cohorts, \
-    cohort_feature_importance_analysis, feature_importance_analysis, performance_analysis, cohort_fairness_analysis, \
-    sample_classification_analysis, fairness_analysis
-from utils.dataloader import set_cohort_folder, COHORT_FOLDERS
+from prep.folds import run_fold_step
+from prep.mapping import run_mapping_step
+from prep.ranges import run_merge_step
+from prep.scan import run_scan_step
+from model.train import train
+from analysis.performance import performance_analysis
+from analysis.fairness import cohort_fairness_analysis, fairness_analysis
+from analysis.importance import (cohort_feature_importance_analysis,
+                                 feature_importance_analysis)
+from analysis.classification import sample_classification_analysis
+from analysis.selection import filter_cohorts_by_roc
+from data_io import list_cohorts, set_cohort_folder, figure_path, blacklist_path
+from config import ALL_MERGE_STRATEGIES, BEST_MERGE_STRATEGY, COHORT_FOLDERS
 
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--cohort_folder", choices=list(COHORT_FOLDERS), required=True,
-                    help="which cohort folder to run: all -> data/representative_cohorts, "
-                         "subset -> data/representative_cohorts_subset (one cohort per code1), "
-                         "test -> data/cohorts")
+                    help="which cohort folder to run: all -> data/cohorts_100, "
+                         "subset -> data/cohorts_50 (one cohort per code1), "
+                         "test -> data/cohorts_test")
 parser.add_argument("--purge", action='store_true')  # set to delete all cohort outputs and rebuild them from scratch
 parser.add_argument("--balanced_rf_only", action='store_true')  # set to train only balanced_rf, skipping rf and catboost
+parser.add_argument("--all_mappings", action='store_true',
+                    help=f"build merged ranges and discretised mappings for every merge strategy "
+                         f"({', '.join(ALL_MERGE_STRATEGIES)}) instead of only {BEST_MERGE_STRATEGY}")
 args = parser.parse_args()
 
+# the blacklist fixes the feature set for every cohort: load_all_itemids() is d_labitems minus
+# this file, so without it the scan step would build mappings over every itemid in MIMIC.
+# mimic_analysis.py writes it once over the whole labevents file and nothing here regenerates
+# it, so a missing blacklist is a missing prerequisite, not something to rebuild in passing.
+if not blacklist_path().exists():
+    raise SystemExit(f"No itemid blacklist at {blacklist_path()}.\n"
+                     f"Run mimic_analysis.py first: it scans labevents once and writes the "
+                     f"blacklist that fixes the feature set for every cohort.")
 
-set_cohort_folder(args.cohort_folder)  # pick data/cohorts (all) or data/representative_cohorts (test)
+
+set_cohort_folder(args.cohort_folder)  # one of data/cohorts_100, cohorts_50, cohorts_test
 cohorts = list_cohorts()
 
 # scan labevents for all cohorts once -> get continuous mappings
 run_scan_step(cohorts, args.purge)
 
 # process cohort-wise
-for cohort in cohorts:
+for index, cohort in enumerate(cohorts, start=1):
+    # skip cohort if last file (classification heatmap) already exists for this cohort
+    if figure_path(cohort, "classification_heatmap").exists():
+        print(f"[{index}/{len(cohorts)}] Skipping {cohort}: already processed.")
+        continue
+    print(f"[{index}/{len(cohorts)}] Processing {cohort}.")
     # merge multi ranges
-    run_merge_step(cohort)
+    run_merge_step(cohort, args.all_mappings)
     # create discretised and binarised mappings
-    run_mapping_step(cohort)
+    run_mapping_step(cohort, args.all_mappings)
     # separate the cohort into 5 stratified, grouped folds (train/test)
     run_fold_step(cohort)
     # train classifiers with 5-fold cross validation
@@ -40,13 +66,19 @@ for cohort in cohorts:
     sample_classification_analysis(cohort)
 
 
+# keep only the cohorts the model actually learned something on: the cross-cohort figures
+# aggregate ranks, gaps and scores, and a cohort at chance level contributes only noise
+analysed, dropped = filter_cohorts_by_roc(cohorts)
+print(f"Cross-cohort analyses over {len(analysed)} of {len(cohorts)} cohorts. "
+      f"Excluded ({len(dropped)}): {', '.join(dropped) if dropped else 'none'}")
+
 # cross-cohort feature importance analysis
-feature_importance_analysis(cohorts)
+feature_importance_analysis(analysed)
 
 # cross-cohort performance analysis
-performance_analysis(cohorts)
+performance_analysis(analysed)
 
 # cross-cohort fairness analysis
-fairness_analysis(cohorts)
+fairness_analysis(analysed)
 
 

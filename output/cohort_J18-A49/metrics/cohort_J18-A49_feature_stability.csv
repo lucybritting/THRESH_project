@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_J18-A49,cont,5,206,0.9173971659904824
+cohort_J18-A49,disc,5,206,0.9309117947728213
+cohort_J18-A49,disc_imp,5,206,0.9311568678828097
+cohort_J18-A49,bin,5,206,0.9311080104745231

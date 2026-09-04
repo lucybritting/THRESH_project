@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_G20-A04,cont,5,183,0.9424358284599149
+cohort_G20-A04,disc,5,183,0.9526508946427363
+cohort_G20-A04,disc_imp,5,183,0.9562383094398239
+cohort_G20-A04,bin,5,183,0.9515367033619653

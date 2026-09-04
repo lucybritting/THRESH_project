@@ -1,0 +1,8 @@
+metric,description,n_rows,pct_of_labevents
+rows_total,every row in labevents,158374764,100.0
+rows_with_hadm_id,tied to a hospital admission,84605867,53.42
+rows_with_hadm_id_and_value,tied to an admission AND carrying a value — the denominator of every other count in this folder,79440362,50.16
+rows_without_hadm_id,dropped: no admission to attach to,73768897,46.58
+rows_without_hadm_id_but_with_value,"of those dropped rows, how many held a usable value",62871619,39.7
+rows_with_hadm_id_but_no_value,dropped: admission known but value empty,5165505,3.26
+distinct_hadm_ids,admissions appearing anywhere in labevents,447689,

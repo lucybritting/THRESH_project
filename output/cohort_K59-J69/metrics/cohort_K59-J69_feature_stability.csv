@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_K59-J69,cont,5,229,0.9881799651602827
+cohort_K59-J69,disc,5,229,0.9930387401698213
+cohort_K59-J69,disc_imp,5,229,0.9924696391074083
+cohort_K59-J69,bin,5,229,0.9932496280388321

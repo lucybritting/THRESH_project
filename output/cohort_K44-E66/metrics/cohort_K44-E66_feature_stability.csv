@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_K44-E66,cont,5,195,0.9528427888477844
+cohort_K44-E66,disc,5,195,0.9728025030812605
+cohort_K44-E66,disc_imp,5,195,0.9742277492321871
+cohort_K44-E66,bin,5,195,0.9723491216924366

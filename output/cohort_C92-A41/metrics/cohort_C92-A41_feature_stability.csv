@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_C92-A41,cont,5,190,0.9669584445436099
+cohort_C92-A41,disc,5,190,0.9795692596522304
+cohort_C92-A41,disc_imp,5,190,0.9789271422513972
+cohort_C92-A41,bin,5,190,0.9678637284352779

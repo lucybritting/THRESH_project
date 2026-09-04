@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_C15-G47,cont,5,155,0.9527425398577783
+cohort_C15-G47,disc,5,155,0.9288741105582871
+cohort_C15-G47,disc_imp,5,155,0.9276420104748154
+cohort_C15-G47,bin,5,155,0.9528403769926372

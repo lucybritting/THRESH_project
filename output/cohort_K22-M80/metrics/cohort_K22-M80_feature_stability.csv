@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_K22-M80,cont,5,201,0.9526847778697639
+cohort_K22-M80,disc,5,201,0.9677862193302647
+cohort_K22-M80,disc_imp,5,201,0.9663020518223742
+cohort_K22-M80,bin,5,201,0.9691144989309681

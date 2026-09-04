@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_C80-D61_aplasia,cont,5,213,0.9804795715434289
+cohort_C80-D61_aplasia,disc,5,213,0.9892366233985584
+cohort_C80-D61_aplasia,disc_imp,5,213,0.9900407822218424
+cohort_C80-D61_aplasia,bin,5,213,0.9844342898839873

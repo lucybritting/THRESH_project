@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_M32-E86,cont,5,193,0.9503724933770162
+cohort_M32-E86,disc,5,193,0.9575287489478221
+cohort_M32-E86,disc_imp,5,193,0.9574361832065149
+cohort_M32-E86,bin,5,193,0.9618690841136598

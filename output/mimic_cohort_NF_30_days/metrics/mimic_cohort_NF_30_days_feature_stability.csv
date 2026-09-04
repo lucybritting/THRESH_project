@@ -1,5 +1,0 @@
-cohort,representation,n_folds,n_features,kendalls_w
-mimic_cohort_NF_30_days,cont,5,380,0.9385249045013833
-mimic_cohort_NF_30_days,disc,5,380,0.9827053934735642
-mimic_cohort_NF_30_days,disc_imp,5,380,0.982604241718425
-mimic_cohort_NF_30_days,bin,5,380,0.9699590577530112

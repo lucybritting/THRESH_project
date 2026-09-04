@@ -1,0 +1,5 @@
+cohort,representation,n_folds,n_features,kendalls_w
+cohort_J18-J09,cont,5,217,0.9470578577862697
+cohort_J18-J09,disc,5,217,0.9610340187627073
+cohort_J18-J09,disc_imp,5,217,0.967657140115113
+cohort_J18-J09,bin,5,217,0.9648731960916422
