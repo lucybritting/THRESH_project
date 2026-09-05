@@ -21,23 +21,21 @@ parser.add_argument("--cohort_folder", choices=list(COHORT_FOLDERS), required=Tr
                          "subset -> data/cohorts_50 (one cohort per code1), "
                          "test -> data/cohorts_test")
 parser.add_argument("--purge", action='store_true')  # set to delete all cohort outputs and rebuild them from scratch
-parser.add_argument("--balanced_rf_only", action='store_true')  # set to train only balanced_rf, skipping rf and catboost
+parser.add_argument("--all_classifiers", action='store_true',
+                    help="train rf and catboost as well; without it only the "
+                         "balanced random forest the analyses read is trained")
 parser.add_argument("--all_mappings", action='store_true',
                     help=f"build merged ranges and discretised mappings for every merge strategy "
                          f"({', '.join(ALL_MERGE_STRATEGIES)}) instead of only {BEST_MERGE_STRATEGY}")
 args = parser.parse_args()
 
-# the blacklist fixes the feature set for every cohort: load_all_itemids() is d_labitems minus
-# this file, so without it the scan step would build mappings over every itemid in MIMIC.
-# mimic_analysis.py writes it once over the whole labevents file and nothing here regenerates
-# it, so a missing blacklist is a missing prerequisite, not something to rebuild in passing.
 if not blacklist_path().exists():
     raise SystemExit(f"No itemid blacklist at {blacklist_path()}.\n"
                      f"Run mimic_analysis.py first: it scans labevents once and writes the "
                      f"blacklist that fixes the feature set for every cohort.")
 
 
-set_cohort_folder(args.cohort_folder)  # one of data/cohorts_100, cohorts_50, cohorts_test
+set_cohort_folder(args.cohort_folder)
 cohorts = list_cohorts()
 
 # scan labevents for all cohorts once -> get continuous mappings
@@ -57,7 +55,7 @@ for index, cohort in enumerate(cohorts, start=1):
     # separate the cohort into 5 stratified, grouped folds (train/test)
     run_fold_step(cohort)
     # train classifiers with 5-fold cross validation
-    train(cohort, args.balanced_rf_only)
+    train(cohort, args.all_classifiers)
     # do cohort-wise feature importance stability analysis
     cohort_feature_importance_analysis(cohort)
     # cohort-wise fairness analysis
@@ -66,8 +64,7 @@ for index, cohort in enumerate(cohorts, start=1):
     sample_classification_analysis(cohort)
 
 
-# keep only the cohorts the model actually learned something on: the cross-cohort figures
-# aggregate ranks, gaps and scores, and a cohort at chance level contributes only noise
+
 analysed, dropped = filter_cohorts_by_roc(cohorts)
 print(f"Cross-cohort analyses over {len(analysed)} of {len(cohorts)} cohorts. "
       f"Excluded ({len(dropped)}): {', '.join(dropped) if dropped else 'none'}")

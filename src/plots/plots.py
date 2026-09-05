@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap, FuncNorm
 from matplotlib.ticker import FuncFormatter
 
-from .theme import (ACCENT, AXIS, CLASS_NEG, CLASS_POS, DUMBBELL_RIGHT, GAINED, GRIDLINE,
+from .theme import (ACCENT, AXIS, CLASS_NEG, CLASS_POS, GAINED, GRIDLINE,
                     INK_MUTED, INK_PRIMARY, INK_SECONDARY, LOST, REPRESENTATION_COLOUR,
                     SEQUENTIAL_BLUE, SERIES, SURFACE, UNCHANGED, _place_header, _shorten,
                     _wrap_to_width)
@@ -195,43 +195,6 @@ def _dumbbell_panel(ax, y: np.ndarray, left: np.ndarray, right: np.ndarray,
     # hairline between each row
     for boundary in range(1, n_rows):
         ax.axhline(boundary - 0.5, color=AXIS, linewidth=0.8, zorder=1)
-
-# dumbbell chart for per-cohort equalised odds
-def plot_dumbbell_chart(panel_df: pd.DataFrame, left_col: str, right_col: str,
-                        left_label: str, right_label: str, title: str, subtitle: str,
-                        xlabel: str, path, note: str | None = None) -> None:
-    """
-    :param panel_df: indexed by row label, with numeric columns left_col and right_col.
-    :param xlabel: what the shared x-axis measures.
-    :param path: pathlib.Path the png is written to.
-    :param note: optional one-line footnote under the figure
-    """
-    rows = panel_df.index.tolist()
-    y = np.arange(len(rows))[::-1]  # first row at the top
-    left = panel_df[left_col].to_numpy(dtype=float)
-    right = panel_df[right_col].to_numpy(dtype=float)
-
-    fig, ax = plt.subplots(figsize=(8.0, 0.55 * len(rows) + 2.0), facecolor=SURFACE)
-    _dumbbell_panel(ax, y, left, right, ACCENT, DUMBBELL_RIGHT)
-
-    ax.set_yticklabels(rows, fontsize=9, color=INK_SECONDARY)
-    ax.set_xlim(left=0.0)  # a gap is a distance from 0
-    ax.set_xlabel(xlabel, color=INK_SECONDARY, fontsize=9)
-
-    handles = [plt.Line2D([], [], marker="o", linestyle="none", markersize=9,
-                          markerfacecolor=ACCENT, markeredgecolor=SURFACE, label=left_label),
-               plt.Line2D([], [], marker="o", linestyle="none", markersize=9,
-                          markerfacecolor=DUMBBELL_RIGHT, markeredgecolor=SURFACE, label=right_label)]
-    fig.legend(handles=handles, loc="lower center", ncol=2, frameon=False,
-               fontsize=9, labelcolor=INK_SECONDARY, bbox_to_anchor=(0.5, -0.02))
-    _place_header(fig, title, subtitle)
-    if note:
-        fig.text(0.01, -0.06, note, color=INK_MUTED, fontsize=8, ha="left")
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
-    plt.close(fig)
-    print(f"Saved dumbbell chart to {path}.")
 
 # dumbbell plot for equalised odds across cohorts.
 def plot_fairness_eo_dumbbell(gaps: pd.DataFrame, baseline: tuple[str, str],

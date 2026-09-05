@@ -28,8 +28,10 @@ def _split_feature_name(feature_name: str) -> tuple:
 
 
 
-def train(cohort: str, balanced_rf_only: bool = False) -> None:
-    classifiers = {"balanced_rf": CLASSIFIERS["balanced_rf"]} if balanced_rf_only else CLASSIFIERS
+def train(cohort: str, all_classifiers: bool = False) -> None:
+    # only BEST_CLASSIFIER by default: it is the one every analysis downstream reads, and
+    # the other two cost the bulk of the training time for rows nothing else consumes
+    classifiers = CLASSIFIERS if all_classifiers else {BEST_CLASSIFIER: CLASSIFIERS[BEST_CLASSIFIER]}
     print(f"Training {cohort}...")
     # load once per cohort:
     merged_ranges = load_merged_ranges(cohort, BEST_MERGE_STRATEGY)
