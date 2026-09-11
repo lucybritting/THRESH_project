@@ -1,5 +1,0 @@
-cohort,representation,n_folds,n_features,kendalls_w
-cohort_E83-G47,cont,5,227,0.9929357962467203
-cohort_E83-G47,disc,5,227,0.9959244429292641
-cohort_E83-G47,disc_imp,5,227,0.9958617272247418
-cohort_E83-G47,bin,5,227,0.9941183875307378

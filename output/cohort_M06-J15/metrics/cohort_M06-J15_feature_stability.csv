@@ -1,5 +1,0 @@
-cohort,representation,n_folds,n_features,kendalls_w
-cohort_M06-J15,cont,5,196,0.9486308750601257
-cohort_M06-J15,disc,5,196,0.9613773503035
-cohort_M06-J15,disc_imp,5,196,0.9615545831248123
-cohort_M06-J15,bin,5,196,0.9674786499737575

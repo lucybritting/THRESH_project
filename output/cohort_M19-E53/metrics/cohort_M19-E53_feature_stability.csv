@@ -1,5 +1,0 @@
-cohort,representation,n_folds,n_features,kendalls_w
-cohort_M19-E53,cont,5,216,0.9528575629958952
-cohort_M19-E53,disc,5,216,0.9753304842681926
-cohort_M19-E53,disc_imp,5,216,0.9725700532115644
-cohort_M19-E53,bin,5,216,0.9769029818120827

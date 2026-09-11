@@ -1,5 +1,0 @@
-cohort,representation,n_folds,n_features,kendalls_w
-cohort_C80-D70_NF,cont,5,213,0.9695903376018481
-cohort_C80-D70_NF,disc,5,213,0.9825262324272522
-cohort_C80-D70_NF,disc_imp,5,213,0.9839845764491221
-cohort_C80-D70_NF,bin,5,213,0.981555312761709

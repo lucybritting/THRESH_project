@@ -1,5 +1,0 @@
-cohort,representation,n_folds,n_features,kendalls_w
-cohort_M62-H91,cont,5,207,0.927149782700446
-cohort_M62-H91,disc,5,207,0.9524970682283758
-cohort_M62-H91,disc_imp,5,207,0.9561933637996362
-cohort_M62-H91,bin,5,207,0.9539003799638451

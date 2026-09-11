@@ -1,5 +1,0 @@
-cohort,representation,n_folds,n_features,kendalls_w
-cohort_M35-N30,cont,5,191,0.9422126720856938
-cohort_M35-N30,disc,5,191,0.9526929993739129
-cohort_M35-N30,disc_imp,5,191,0.9562753151870086
-cohort_M35-N30,bin,5,191,0.9574325605512235
